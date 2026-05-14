@@ -68,3 +68,8 @@ http://localhost:8080
 ## Nota importante
 
 La procedura modifica i FLAC estratti dallo ZIP, non i file originali presenti sul tuo computer. Il risultato viene scaricato come nuovo ZIP.
+
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
