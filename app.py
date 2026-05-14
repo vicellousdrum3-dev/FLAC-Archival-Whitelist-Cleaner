@@ -28,14 +28,14 @@ BASE_DIR = get_base_dir()
 
 
 def safe_extract_zip(zip_path: Path, destination: Path) -> None:
-    """Extract a zip file while preventing path traversal."""
+    """Extract a ZIP file while preventing path traversal."""
     destination_resolved = destination.resolve()
 
     with ZipFile(zip_path, "r") as archive:
         for member in archive.infolist():
             target = (destination / member.filename).resolve()
-            if os.path.commonpath([destination_resolved, target]) != str(destination_resolved):
-                raise ValueError(f"Percorso non sicuro nello ZIP: {member.filename}")
+            if os.path.commonpath([str(destination_resolved), str(target)]) != str(destination_resolved):
+                raise ValueError(f"Unsafe path inside ZIP: {member.filename}")
 
         archive.extractall(destination)
 
@@ -147,14 +147,17 @@ def home(lang: str = "it") -> str:
             padding-left: 14px;
             margin: 20px 0;
           }}
-          input, button {{
+          input, button, .button {{
             font-size: 16px;
           }}
-          button {{
+          button, .button {{
+            display: inline-block;
             padding: 12px 18px;
             border-radius: 10px;
             border: 1px solid #8886;
             cursor: pointer;
+            text-decoration: none;
+            color: inherit;
           }}
           code {{
             background: #8882;
@@ -184,7 +187,7 @@ def home(lang: str = "it") -> str:
             <p>{target_users}</p>
           </div>
 
-          <form action="/process" enctype="multipart/form-data" method="post">
+          <form action="/process?lang={lang}" enctype="multipart/form-data" method="post">
             <input name="file" type="file" accept=".zip,application/zip" required>
             <br><br>
             <button type="submit">{button_text}</button>
@@ -197,11 +200,11 @@ def home(lang: str = "it") -> str:
     """
 
 
-@app.post("/process")
-async def process(file: UploadFile = File(...)):
+@app.post("/process", response_class=HTMLResponse)
+async def process(file: UploadFile = File(...), lang: str = "it"):
     filename = file.filename or "upload.zip"
     if not filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Carica solo un file .zip")
+        raise HTTPException(status_code=400, detail="Upload only a .zip file")
 
     job_id = str(uuid.uuid4())
     job_dir = BASE_DIR / job_id
@@ -219,9 +222,9 @@ async def process(file: UploadFile = File(...)):
     try:
         safe_extract_zip(uploaded_zip, input_dir)
     except BadZipFile:
-        raise HTTPException(status_code=400, detail="ZIP non valido o corrotto")
+        raise HTTPException(status_code=400, detail="Invalid or corrupted ZIP file")
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Errore estrazione ZIP: {exc}")
+        raise HTTPException(status_code=400, detail=f"ZIP extraction error: {exc}")
 
     try:
         result = subprocess.run(
@@ -232,8 +235,15 @@ async def process(file: UploadFile = File(...)):
             timeout=int(os.getenv("PROCESS_TIMEOUT_SECONDS", "7200")),
         )
     except subprocess.TimeoutExpired:
-        log_file.write_text("Errore: elaborazione interrotta per timeout.\n", encoding="utf-8")
-        return FileResponse(log_file, media_type="text/plain", filename="errore_timeout_flac.txt")
+        log_file.write_text("Error: processing stopped because of timeout.\n", encoding="utf-8")
+        return HTMLResponse(
+            f"""
+            <h1>Processing timeout</h1>
+            <p>The operation took too long.</p>
+            <p><a href="/log/{job_id}">Download error log</a></p>
+            """,
+            status_code=500,
+        )
 
     log_file.write_text(
         "STDOUT:\n" + result.stdout + "\n\nSTDERR:\n" + result.stderr,
@@ -242,12 +252,97 @@ async def process(file: UploadFile = File(...)):
     )
 
     if result.returncode != 0:
-        return FileResponse(log_file, media_type="text/plain", filename="errore_elaborazione_flac.txt")
+        return HTMLResponse(
+            f"""
+            <h1>Processing error</h1>
+            <p>The FLAC cleaning script returned an error.</p>
+            <p><a href="/log/{job_id}">Download processing log</a></p>
+            """,
+            status_code=500,
+        )
 
     shutil.make_archive(str(output_zip_base), "zip", input_dir)
+
+    if lang == "en":
+        title = "Processing completed"
+        message = "Your cleaned FLAC archive is ready."
+        download_text = "Download cleaned ZIP"
+        home_text = "Back to home"
+    else:
+        title = "Elaborazione completata"
+        message = "Il tuo archivio FLAC pulito è pronto."
+        download_text = "Scarica ZIP pulito"
+        home_text = "Torna alla home"
+
+    return f"""
+    <!doctype html>
+    <html lang="{lang}">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{title}</title>
+        <style>
+          :root {{ color-scheme: light dark; }}
+          body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            max-width: 760px;
+            margin: 36px auto;
+            padding: 18px;
+            line-height: 1.58;
+          }}
+          .box {{
+            border: 1px solid #8884;
+            border-radius: 16px;
+            padding: 26px;
+          }}
+          a.button {{
+            display: inline-block;
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid #8886;
+            text-decoration: none;
+            color: inherit;
+            margin-right: 10px;
+          }}
+        </style>
+      </head>
+      <body>
+        <div class="box">
+          <h1>{title}</h1>
+          <p>{message}</p>
+          <p>
+            <a class="button" href="/download/{job_id}">{download_text}</a>
+            <a class="button" href="/?lang={lang}">{home_text}</a>
+          </p>
+        </div>
+      </body>
+    </html>
+    """
+
+
+@app.get("/download/{job_id}")
+def download(job_id: str):
+    output_zip = BASE_DIR / job_id / "flac_archival_cleaned_output.zip"
+
+    if not output_zip.exists():
+        raise HTTPException(status_code=404, detail="Cleaned ZIP not found")
 
     return FileResponse(
         output_zip,
         media_type="application/zip",
         filename="flac_archival_cleaned_output.zip",
+    )
+
+
+@app.get("/log/{job_id}")
+def download_log(job_id: str):
+    log_file = BASE_DIR / job_id / "log.txt"
+
+    if not log_file.exists():
+        raise HTTPException(status_code=404, detail="Log file not found")
+
+    return FileResponse(
+        log_file,
+        media_type="text/plain",
+        filename="flac_cleaning_log.txt",
     )
