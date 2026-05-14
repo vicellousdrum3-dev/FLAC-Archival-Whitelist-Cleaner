@@ -38,66 +38,66 @@ def safe_extract_zip(zip_path: Path, destination: Path) -> None:
         archive.extractall(destination)
 
 
-@app.get("/health", response_class=PlainTextResponse)
-def health() -> str:
-    return "ok"
-
-
 @app.get("/", response_class=HTMLResponse)
 def home(lang: str = "it") -> str:
-    if lang not in ["it", "en"]:
+    if lang not in ("it", "en"):
         lang = "it"
 
     if lang == "en":
+        page_lang = "en"
+        language_label = "Language"
         title = "FLAC Archival Whitelist Cleaner"
         intro = """
-        Upload a ZIP archive containing one or more folders with <code>.flac</code> files.
-        The system recursively analyzes the archive structure, performs controlled metadata cleaning,
-        removes non-archival references from streaming services, downloaders or encoders,
-        generates a technical report inside each processed folder, and returns a final ZIP ready for download.
+          Upload a ZIP archive containing one or more folders with <code>.flac</code> files.
+          The system recursively analyzes the archive structure, performs controlled metadata cleaning,
+          removes non-archival references from streaming services, downloaders or encoders,
+          generates a technical report inside each processed folder, and returns a final ZIP ready for download.
         """
-        audio_note = """
-        The original audio content is never converted, re-encoded, resampled or altered.
-        The procedure works exclusively on textual metadata, preserving embedded cover artwork
-        and official tags already present whenever available.
+        audio_integrity = """
+          The original audio file is never converted, re-encoded, resampled or altered in its audio content.
+          The procedure works exclusively on textual metadata, preserving embedded cover artwork and official
+          archival tags already present whenever available.
         """
-        audience = """
-        This service is designed for audiophiles, collectors and users who want to maintain a clean,
-        organized and technically documented <strong>hi-res</strong> and <strong>lossless</strong> digital archive.
+        target_users = """
+          This service is designed for audiophiles, collectors and users who want to maintain a clean,
+          organized and technically documented <strong>hi-res</strong> and <strong>lossless</strong> digital archive.
         """
-        upload_label = "Upload and process ZIP"
-        file_note = """
-        Note: the <code>AUDIO_PCM_FINGERPRINT_MD5</code> calculation may take time on large archives.
-        Always work on copies of your original files.
+        button_text = "Upload and process ZIP"
+        note = """
+          Note: the <code>AUDIO_PCM_FINGERPRINT_MD5</code> calculation may take time on large archives.
+          Always work on copies of your original files.
         """
-        current_language = "Language"
     else:
+        page_lang = "it"
+        language_label = "Lingua"
         title = "FLAC Archival Whitelist Cleaner"
         intro = """
-        Carica uno ZIP contenente una o più cartelle con file <code>.flac</code>.
-        Il sistema analizza ricorsivamente la struttura dell’archivio, esegue una pulizia controllata dei metadati,
-        rimuove i riferimenti non archivistici provenienti da servizi di streaming, downloader o encoder,
-        genera un report tecnico in ogni cartella elaborata e restituisce uno ZIP finale pronto per il download.
+          Carica uno ZIP contenente una o più cartelle con file <code>.flac</code>.
+          Il sistema analizza ricorsivamente la struttura dell’archivio, esegue una pulizia controllata dei metadati,
+          rimuove i riferimenti non archivistici provenienti da servizi di streaming, downloader o encoder,
+          genera un report tecnico in ogni cartella elaborata e restituisce uno ZIP finale pronto per il download.
         """
-        audio_note = """
-        Il contenuto audio originale non viene convertito, ricodificato, ricampionato o alterato.
-        La procedura interviene esclusivamente sui metadati testuali, preservando le cover integrate
-        e i tag ufficiali già presenti quando disponibili.
+        audio_integrity = """
+          Il file audio originale non viene convertito, ricodificato, ricampionato o alterato nel contenuto sonoro.
+          La procedura interviene esclusivamente sui metadati testuali, preservando le cover integrate e i tag
+          ufficiali/archivistici già presenti quando disponibili.
         """
-        audience = """
-        Il servizio è pensato per audiofili, collezionisti e utenti che desiderano mantenere un archivio digitale
-        <strong>hi-res</strong> e <strong>lossless</strong> pulito, ordinato e tecnicamente documentato.
+        target_users = """
+          Il servizio è pensato per audiofili, collezionisti e utenti che desiderano mantenere un archivio digitale
+          <strong>hi-res</strong> e <strong>lossless</strong> pulito, ordinato e tecnicamente documentato.
         """
-        upload_label = "Carica e processa ZIP"
-        file_note = """
-        Nota: il calcolo <code>AUDIO_PCM_FINGERPRINT_MD5</code> può richiedere tempo su archivi grandi.
-        Lavora sempre su copie dei file originali.
+        button_text = "Carica e processa ZIP"
+        note = """
+          Nota: il calcolo <code>AUDIO_PCM_FINGERPRINT_MD5</code> può richiedere tempo su archivi grandi.
+          Lavora sempre su copie dei file originali.
         """
-        current_language = "Lingua"
+
+    it_active = "active" if lang == "it" else ""
+    en_active = "active" if lang == "en" else ""
 
     return f"""
     <!doctype html>
-    <html lang="{lang}">
+    <html lang="{page_lang}">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -106,10 +106,10 @@ def home(lang: str = "it") -> str:
           :root {{ color-scheme: light dark; }}
           body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-            max-width: 860px;
+            max-width: 880px;
             margin: 36px auto;
             padding: 18px;
-            line-height: 1.55;
+            line-height: 1.58;
           }}
           .box {{
             border: 1px solid #8884;
@@ -129,10 +129,16 @@ def home(lang: str = "it") -> str:
             border: 1px solid #8885;
             border-radius: 999px;
             padding: 6px 12px;
+            color: inherit;
           }}
           .language a.active {{
             font-weight: 700;
             background: #8882;
+          }}
+          .notice {{
+            border-left: 4px solid #8886;
+            padding-left: 14px;
+            margin: 20px 0;
           }}
           input, button {{
             font-size: 16px;
@@ -148,20 +154,18 @@ def home(lang: str = "it") -> str:
             padding: 2px 6px;
             border-radius: 6px;
           }}
-          .small {{ opacity: .75; font-size: 14px; }}
-          .notice {{
-            border-left: 4px solid #8886;
-            padding-left: 14px;
-            margin: 18px 0;
+          .small {{
+            opacity: .75;
+            font-size: 14px;
           }}
         </style>
       </head>
       <body>
         <div class="box">
           <div class="language">
-            <span>{current_language}:</span>
-            <a href="/?lang=it" class="{'active' if lang == 'it' else ''}">Italiano</a>
-            <a href="/?lang=en" class="{'active' if lang == 'en' else ''}">English</a>
+            <span>{language_label}:</span>
+            <a href="/?lang=it" class="{it_active}">Italiano</a>
+            <a href="/?lang=en" class="{en_active}">English</a>
           </div>
 
           <h1>{title}</h1>
@@ -169,17 +173,17 @@ def home(lang: str = "it") -> str:
           <p>{intro}</p>
 
           <div class="notice">
-            <p>{audio_note}</p>
-            <p>{audience}</p>
+            <p>{audio_integrity}</p>
+            <p>{target_users}</p>
           </div>
 
           <form action="/process" enctype="multipart/form-data" method="post">
             <input name="file" type="file" accept=".zip,application/zip" required>
             <br><br>
-            <button type="submit">{upload_label}</button>
+            <button type="submit">{button_text}</button>
           </form>
 
-          <p class="small">{file_note}</p>
+          <p class="small">{note}</p>
         </div>
       </body>
     </html>
