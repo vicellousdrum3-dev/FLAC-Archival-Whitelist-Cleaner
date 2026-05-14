@@ -30,12 +30,19 @@ BASE_DIR = get_base_dir()
 def safe_extract_zip(zip_path: Path, destination: Path) -> None:
     """Extract a zip file while preventing path traversal."""
     destination_resolved = destination.resolve()
+
     with ZipFile(zip_path, "r") as archive:
         for member in archive.infolist():
             target = (destination / member.filename).resolve()
-            if not str(target).startswith(str(destination_resolved)):
+            if os.path.commonpath([destination_resolved, target]) != str(destination_resolved):
                 raise ValueError(f"Percorso non sicuro nello ZIP: {member.filename}")
+
         archive.extractall(destination)
+
+
+@app.get("/health", response_class=PlainTextResponse)
+def health() -> str:
+    return "ok"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -188,3 +195,59 @@ def home(lang: str = "it") -> str:
       </body>
     </html>
     """
+
+
+@app.post("/process")
+async def process(file: UploadFile = File(...)):
+    filename = file.filename or "upload.zip"
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Carica solo un file .zip")
+
+    job_id = str(uuid.uuid4())
+    job_dir = BASE_DIR / job_id
+    input_dir = job_dir / "input"
+    uploaded_zip = job_dir / "upload.zip"
+    output_zip_base = job_dir / "flac_archival_cleaned_output"
+    output_zip = output_zip_base.with_suffix(".zip")
+    log_file = job_dir / "log.txt"
+
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    with uploaded_zip.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        safe_extract_zip(uploaded_zip, input_dir)
+    except BadZipFile:
+        raise HTTPException(status_code=400, detail="ZIP non valido o corrotto")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Errore estrazione ZIP: {exc}")
+
+    try:
+        result = subprocess.run(
+            ["sh", str(SCRIPT_PATH)],
+            cwd=input_dir,
+            capture_output=True,
+            text=True,
+            timeout=int(os.getenv("PROCESS_TIMEOUT_SECONDS", "7200")),
+        )
+    except subprocess.TimeoutExpired:
+        log_file.write_text("Errore: elaborazione interrotta per timeout.\n", encoding="utf-8")
+        return FileResponse(log_file, media_type="text/plain", filename="errore_timeout_flac.txt")
+
+    log_file.write_text(
+        "STDOUT:\n" + result.stdout + "\n\nSTDERR:\n" + result.stderr,
+        encoding="utf-8",
+        errors="ignore",
+    )
+
+    if result.returncode != 0:
+        return FileResponse(log_file, media_type="text/plain", filename="errore_elaborazione_flac.txt")
+
+    shutil.make_archive(str(output_zip_base), "zip", input_dir)
+
+    return FileResponse(
+        output_zip,
+        media_type="application/zip",
+        filename="flac_archival_cleaned_output.zip",
+    )
