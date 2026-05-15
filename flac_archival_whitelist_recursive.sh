@@ -1,7 +1,7 @@
 #!/bin/sh
 
-REPORT_NAME="report_flac_archival_whitelist.tsv"
-VERIFY_NAME="verifica_pulizia_whitelist.txt"
+REPORT_NAME="FLAC_Metadata_Audit.tsv"
+VERIFY_NAME="FLAC_Integrity_Log.txt"
 
 get_tag() {
   file="$1"
@@ -187,10 +187,10 @@ process_flac_file() {
   bad=$(metaflac --export-tags-to=- "$f" 2>/dev/null | grep -Ei "TIDAL|QOBUZ|SPOTIFY|AMAZON|DEEZER|APPLE|ITUNES|YOUTUBE|TRACK_MIX|Lavf|Lavc|encoder|LYRICS|UNSYNCEDLYRICS|SYNCEDLYRICS|mediaMetadata|allowStreaming|streamReady|payToStream|premiumStreamingOnly|djReady|stemReady|popularity|album_id|track_id|streamStartDate|Reinserimento")
 
   if [ -n "$bad" ]; then
-    echo "ATTENZIONE: residui trovati:" >> "$VERIFY"
+    echo "WARNING: residual metadata detected:" >> "$VERIFY"
     echo "$bad" >> "$VERIFY"
   else
-    echo "OK: nessun residuo streaming/Lav/Lyrics/frasi operative trovato." >> "$VERIFY"
+    echo "OK: no residual streaming, encoder, lyrics or operational metadata detected." >> "$VERIFY"
   fi
 
   echo >> "$VERIFY"
@@ -211,7 +211,7 @@ process_dir_if_contains_flac() {
 
   write_header
 
-  echo "VERIFICA PULIZIA FLAC - WHITELIST" > "$VERIFY"
+  echo "FLAC INTEGRITY CHECK" > "$VERIFY"
   echo "=================================" >> "$VERIFY"
   echo >> "$VERIFY"
 
@@ -234,8 +234,8 @@ process_dir_if_contains_flac() {
     esac
   done
 
-  echo "Report creato: $OUT"
-  echo "Verifica creata: $VERIFY"
+  echo "Metadata audit created: $OUT"
+  echo "Integrity log created"
 }
 
 scan_recursive() {
@@ -255,8 +255,9 @@ scan_recursive() {
   done
 }
 
-scan_recursive "."
+TARGET="${1:-.}"
+scan_recursive "$TARGET"
 
 echo
-echo "Operazione completata."
-echo "Ogni cartella con FLAC ha il proprio report e la propria verifica."
+echo "Operation completed."
+echo "Each FLAC folder includes its own metadata audit and integrity log."
